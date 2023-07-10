@@ -1,0 +1,237 @@
+%   CFD Project- Cavity flow 
+%   Semester: 2 
+%   year:2023
+%   Authour: Mohammadreza Eslamzadeh
+%   Instructor: Dr.Hamid Naderan Tahan
+%   ID: 401126141
+%   Amirkabir University of Technology (Tehran Polytechnique)
+clc
+clear
+%%  Variables and Parameters
+Gridpoints = [160,80,40,20,10,129]; % Gridpoints or Nodes
+dx = zeros(length(Gridpoints)-2); 
+error = zeros(length(Gridpoints)-2);
+L = 1;                              % Domain size
+U_wall = 1;
+Re = input('enter Reynolds number:');% set Reynolds number
+nu = U_wall*L/Re;
+rho = 1;
+dt = 1e-4 ;                          % time step size
+Itmax = 160000;                      % Number of itteration
+Imax  = 160000;
+epsilon = 1e-7;                      % Maximum allowable error value 
+
+%% Computational 2D domain variables
+for k=1:length(Gridpoints)
+Nx = Gridpoints(k);
+Ny = Nx;
+delta=L/(Nx-1); 
+x = 0:delta:L; 
+y = 0:delta:L;
+%%% Initial values
+omega = zeros(Nx,Ny); 
+psi = zeros(Nx,Ny);
+omega_i = zeros(Nx,Ny);
+u = zeros(Nx,Ny);
+u(2:Nx-1,Ny) = U_wall;
+v = zeros(Nx,Ny);
+for iterration1 = 1:Itmax
+%%% Boundary condition for omega or vorticity
+omega(1:Nx,Ny) = -2*psi(1:Nx,Ny-1)/(delta^2) - U_wall*2/delta; % Top
+omega(1:Nx,1) = -2*psi(1:Nx,2) /(delta^2);                    % Bottom
+omega(1,1:Ny) = -2*psi(2,1:Ny) /(delta^2);                    % Left
+omega(Nx,1:Ny) = -2*psi(Nx-1,1:Ny)/(delta^2);                 % Right
+%%%  Calculating omega or Vorticity in present time step
+omega_i = omega;
+for i = 2:Nx-1
+    for j = 2: Ny-1
+        %%%  Calculating omega or Vorticity in next time step
+        omega(i,j) = omega_i(i,j) + ...
+        ((-psi(i,j+1)+psi(i,j-1))/(2*delta) .* (omega_i(i+1,j)-omega_i(i-1,j))/(2*delta)+...
+        (psi(i+1,j)-psi(i-1,j))/(2*delta) .* (omega_i(i,j+1)-omega_i(i,j-1))/(2*delta)+...
+        nu*(omega_i(i+1,j)+omega_i(i-1,j)-4*omega_i(i,j)+omega_i(i,j+1)+omega_i(i,j-1))/(delta^2))*dt;
+        %%% Calculating Psi 
+        psi(i,j) = (omega(i,j)*delta^2 + psi(i+1,j) + psi(i,j+1) + psi(i,j-1) + psi(i-1,j))/4;
+    end
+end
+%%% Checking Convergence
+if iterration1 > 10
+error_omega = max(max(omega - omega_i));
+if error_omega < epsilon
+break;
+end
+end
+end
+
+%%% Calculating velocities from stream function or Psi
+u(2:Nx-1,2:Ny-1) = (psi(2:Nx-1,3:Ny)-psi(2:Nx-1,1:Ny-2))/(2*delta); 
+v(2:Nx-1,2:Ny-1) = (-psi(3:Nx,2:Ny-1)+psi(1:Nx-2,2:Ny-1))/(2*delta);
+
+%% Poisson equation for pressure
+% Initial value
+P = ones(Nx,Ny); % We need one point as reference pressure so P(1,1)= 1                                     
+
+for iterration2 = 1:Imax
+% Pressure Boundary condition
+P(2:Nx-1,Ny)    = P(1:Nx-2,Ny)-nu*rho/2*(omega(2:Nx-1,Ny-2)-4*omega(2:Nx-1,Ny-1)+3*omega(2:Nx-1,Ny));       % Top
+P(Nx,Ny)        = P(Nx-1,Ny)-nu*rho/2*(omega(Nx,Ny-2)-4*omega(Nx,Ny-1)+3*omega(Nx,Ny));                     % corner Topright
+P(2:Nx-1,1)     = P(1:Nx-2,1)-nu*rho/2*(-3*omega(2:Nx-1,1)+4*omega(2:Nx-1,2)-omega(2:Nx-1,3));              % Bottom
+P(Nx,1)         = P(Nx-1,1)-nu*rho/2*(-3*omega(Nx,1)+4*omega(Nx,2)-omega(Nx,3));                            % corner bottomright
+P(1,2:Ny-1)     = P(1,1:Ny-2)+nu*rho/2*(-3*omega(1,2:Ny-1)+4*omega(2,2:Ny-1)-omega(3,2:Ny-1));              % Left
+P(1,Ny)         = P(1,Ny-1)+nu*rho/2*(-3*omega(1,Ny)+4*omega(2,Ny)-omega(3,Ny));                            % corner topLeft
+P(Nx,2:Ny-1)    = P(Nx,1:Ny-2)+nu*rho/2*(omega(Nx-2,2:Ny-1)-4*omega(Nx-1,2:Ny-1)+3*omega(Nx,2:Ny-1));       % Right
+P(1,1)          = 1; % corner bottomleft
+
+%%% Calculating Poisson Pressure 
+P_i = P;
+for i = 2:Nx-1
+    for j = 2:Ny-1
+        P(i,j) = (rho*(-2*(psi(i+1,j)+psi(i-1,j)-2*psi(i,j))*(psi(i,j+1)+psi(i,j-1)-2*psi(i,j))/(delta^2)+((psi(i+1,j+1)-psi(i-1,j+1)-psi(i+1,j-1)+psi(i-1,j-1))^2)/(8*delta^2))+P(i+1,j)+P(i-1,j)+P(i,j+1)+P(i,j-1))/4;    
+    end
+end
+%%% checking Convergence
+if iterration2 > 10
+error_p = max(max(P - P_i));
+if error_p < epsilon
+break;
+end
+end
+end
+
+    %% Calculating error (successive error) in centerline of square
+    %%% Calculating the Norm 3 of error
+    if k==1
+        u1 = u;
+        k1 = Nx;
+        
+    elseif k==2
+        dx(k-1) = delta;
+        u2 = u;
+        k2 = Nx;
+        Error = zeros(1,k2);
+        sum = 0;
+            for j = 1:k2
+                Error(j) = abs(u2(round(k2/2),j)-u1(2*round(k2/2),2*j));
+                
+            end
+        
+        error(k-1) = max(Error);
+    
+    elseif k==3
+        dx(k-1) = delta;
+        u3 = u;
+        k3 = Nx;
+        sum = 0;
+        Error = zeros(1,k3);
+            for j = 1:k3
+                Error(j) = abs(u3(round(k3/2),j)-u2(2*round(k3/2),2*j));                
+            end
+        
+        error(k-1) = max(Error);
+        
+    elseif k==4
+        dx(k-1) = delta;
+        u4 = u;
+        k4 = Nx;
+        sum = 0;
+        Error = zeros(1,k4);
+            for j = 1:k4
+                Error(j) = abs(u4(round(k4/2),j)-u3(2*round(k4/2),2*j));                
+            end
+        
+        error(k-1) = max(Error);
+        
+    elseif k==5
+        dx(k-1) = delta;
+        u5 = u;
+        k5 = Nx;  
+        sum = 0;
+        Error = zeros(1,k5);
+            for j = 1:k5
+                Error(j) = abs(u5(round(k5/2),j)-u4(2*round(k5/2),2*j));                
+            end
+        
+        error(k-1) = max(Error);    
+    end
+
+end
+
+U_midle = u(round(Nx/2),:);
+
+%% Plot Diagrams
+cm = hsv(ceil(100/0.7)); 
+cm = flipud(cm(1:100,:));
+figure(1) 
+contourf(x,y,u',23,'LineColor','none')
+title('u velocity')
+xlabel('x')
+ylabel('y')
+axis('equal',[0 L 0 L]) 
+colormap(cm) 
+colorbar('eastoutside')
+
+figure(2) 
+contourf(x,y,v',23,'LineColor','none')
+title('V velocity')
+xlabel('x') 
+ylabel('y')
+axis('equal',[0 L 0 L]) 
+colormap(cm) 
+colorbar('eastoutside')
+
+figure(3) 
+plot(y/L,u(round(Ny/2),:))
+title('Centerline velocity in the x-axis (u/U) versus y/L')
+xlabel('y/L') 
+ylabel('u/U') 
+axis('square') 
+xlim([0 L]) 
+grid on
+
+figure(4)
+loglog(dx,error)
+xlabel('h')
+ylabel('Successive Error')
+title(['Successive Error versus length between mesh elements for Re=',num2str(Re)])
+
+figure(5)
+[X,Y] = meshgrid(x,y);
+M = 1000; 
+xstart = max(x)*rand(M,1); 
+ystart = max(y)*rand(M,1);
+streamline = streamline(X,Y,u',v',xstart,ystart,[0.1, 200]);
+title('Stream Function') 
+xlabel('x') 
+ylabel('y')
+axis('equal',[0 L 0 L]) 
+set(streamline,'color','black')
+hold on
+
+figure(6)
+contourf(X,Y,psi',40)
+xlabel('x')
+ylabel('y')
+title(['Stream Function for Re=',num2str(Re)])
+colorbar
+grid on
+
+figure(7)
+contourf(X,Y,omega',240)
+xlabel('x')
+ylabel('y')
+title(['Vorticity for Re=',num2str(Re)])
+colorbar
+grid on
+
+figure(8)
+contourf(x,y,P',250,'LineColor','none')
+xlabel('x')
+ylabel('y')
+title(['Pressure for Re=',num2str(Re)])
+colorbar
+grid on
+
+
+
+
+
